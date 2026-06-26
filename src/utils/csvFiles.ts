@@ -6,6 +6,9 @@ import { ValidationError } from "../http/errors";
 
 const csvRowsSchema = z.array(z.record(z.string(), z.unknown()));
 
+/**
+ * Reads a CSV file into validated object rows using the header row as keys.
+ */
 export async function readCsvRows(
     filePath: string,
 ): Promise<readonly Record<string, unknown>[]> {
@@ -18,6 +21,9 @@ export async function readCsvRows(
     return csvRowsSchema.parse(parsed);
 }
 
+/**
+ * Reads a required CSV cell as a trimmed string.
+ */
 export function readCell(
     row: Readonly<Record<string, unknown>>,
     key: string,
@@ -29,6 +35,9 @@ export function readCell(
     return String(value).trim();
 }
 
+/**
+ * Writes object rows as a headered CSV file.
+ */
 export async function writeCsv(
     filePath: string,
     rows: readonly Record<string, unknown>[],

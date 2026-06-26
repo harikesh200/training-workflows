@@ -1,3 +1,6 @@
+/**
+ * Base operational HTTP error for predictable API error responses.
+ */
 export class AppError extends Error {
     public readonly statusCode: number;
     public readonly isOperational: boolean;
@@ -21,24 +24,36 @@ export class AppError extends Error {
     }
 }
 
+/**
+ * Error returned when request input or parsed workflow data is invalid.
+ */
 export class ValidationError extends AppError {
     public constructor(message = "Invalid request", details: unknown = null) {
         super(message, 422, "VALIDATION_ERROR", details);
     }
 }
 
+/**
+ * Error returned when a requested resource cannot be found.
+ */
 export class NotFoundError extends AppError {
     public constructor(resource = "Resource") {
         super(`${resource} not found`, 404, "NOT_FOUND");
     }
 }
 
+/**
+ * Error returned when a syntactically valid request cannot be accepted.
+ */
 export class BadRequestError extends AppError {
     public constructor(message = "Bad request", details: unknown = null) {
         super(message, 400, "BAD_REQUEST", details);
     }
 }
 
+/**
+ * Error returned when an external dependency fails.
+ */
 export class UpstreamError extends AppError {
     public constructor(
         message = "Upstream service error",

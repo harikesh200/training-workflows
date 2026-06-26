@@ -1,5 +1,8 @@
 import { BadRequestError } from "../http/errors";
 
+/**
+ * Normalizes part names before comparing manual and vendor-catalog values.
+ */
 export function cleanPartName(name: string): string {
     return name
         .replace(/\s+/g, " ")
@@ -7,6 +10,9 @@ export function cleanPartName(name: string): string {
         .trim();
 }
 
+/**
+ * Converts user/vendor-controlled text into a safe artifact file-name segment.
+ */
 export function safeFilePart(value: string): string {
     const safe = value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
     if (safe.length === 0) {
@@ -17,6 +23,9 @@ export function safeFilePart(value: string): string {
     return safe;
 }
 
+/**
+ * Groups items by a string key while preserving item order inside each group.
+ */
 export function groupBy<T>(
     items: readonly T[],
     keyOf: (item: T) => string,

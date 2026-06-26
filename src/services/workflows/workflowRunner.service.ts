@@ -19,6 +19,12 @@ type WorkflowRunnerDeps = {
     readonly emailService: EmailService;
 };
 
+/**
+ * Executes the asynchronous workflow pipeline for a persisted job.
+ *
+ * The runner updates job progress between stages and marks the job failed if
+ * any stage throws.
+ */
 export async function runWorkflow(
     deps: WorkflowRunnerDeps,
     jobId: string,

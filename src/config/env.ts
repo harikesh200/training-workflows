@@ -26,5 +26,12 @@ if (!parsed.success) {
     process.exit(1);
 }
 
+/**
+ * Validated runtime configuration loaded once at process startup.
+ */
 export const config = parsed.data;
+
+/**
+ * Inferred application configuration type from the validated environment.
+ */
 export type Config = typeof config;

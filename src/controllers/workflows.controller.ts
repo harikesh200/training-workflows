@@ -36,6 +36,9 @@ function requiredParam(value: string | string[] | undefined, name: string): stri
     return value;
 }
 
+/**
+ * Creates HTTP handlers for workflow creation, lookup, and artifact download.
+ */
 export function makeWorkflowsController(service: WorkflowsService) {
     const create: RequestHandler = async (req, res) => {
         const body = req.body as CreateWorkflowBody;

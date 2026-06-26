@@ -5,6 +5,10 @@ import type { Agent1OutputRow } from "../../types/workflows.domain";
 import type { WorkflowArtifact } from "../../types/workflows.types";
 import { cleanPartName } from "../../utils/workflowUtils";
 
+/**
+ * Analyzes machine logs against the parsed error manual and writes the
+ * `agent1-output` artifact.
+ */
 export async function runLogAnalysis(input: {
     readonly artifactsDir: string;
     readonly errorManualPath: string;

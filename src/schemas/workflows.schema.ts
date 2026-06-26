@@ -16,6 +16,12 @@ const vendorEmailsFieldSchema = z
         }
     });
 
+/**
+ * Multipart body schema for creating a workflow.
+ *
+ * The `vendorEmails` field arrives as a JSON string and is transformed into an
+ * ordered email list for vendor-to-email resolution.
+ */
 export const createWorkflowBodySchema = z.object({
     senderEmail: z.email(),
     senderPassword: z.string().min(1),
@@ -23,13 +29,22 @@ export const createWorkflowBodySchema = z.object({
     plantHeadEmail: z.email(),
 });
 
+/**
+ * Route parameter schema for workflow lookup.
+ */
 export const workflowParamsSchema = z.object({
     id: z.string().min(1),
 });
 
+/**
+ * Route parameter schema for artifact download.
+ */
 export const artifactParamsSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
 });
 
+/**
+ * Validated request body for workflow creation.
+ */
 export type CreateWorkflowBody = z.infer<typeof createWorkflowBodySchema>;

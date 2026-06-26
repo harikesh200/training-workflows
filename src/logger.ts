@@ -1,6 +1,9 @@
 import pino from "pino";
 import { config } from "./config/env";
 
+/**
+ * Process-wide structured logger with secret redaction.
+ */
 export const logger = pino({
     level: config.LOG_LEVEL,
     redact: [

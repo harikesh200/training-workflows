@@ -8,6 +8,9 @@ type RequestSchemas = {
     readonly query?: ZodType;
 };
 
+/**
+ * Parses selected request surfaces with Zod before controller execution.
+ */
 export const validate =
     (schemas: RequestSchemas): RequestHandler =>
     (req, _res, next) => {

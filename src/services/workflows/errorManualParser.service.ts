@@ -3,6 +3,9 @@ import { PDFParse } from "pdf-parse";
 import type { ErrorManualEntry } from "../../types/workflows.domain";
 import { cleanPartName } from "../../utils/workflowUtils";
 
+/**
+ * Parses the uploaded maintenance manual PDF into error-code metadata.
+ */
 export async function parseErrorManual(
     manualPath: string,
 ): Promise<ReadonlyMap<string, ErrorManualEntry>> {

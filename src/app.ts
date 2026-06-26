@@ -10,6 +10,9 @@ import { logger } from "./logger";
 import { makeWorkflowsRouter } from "./routes/workflows.routes";
 import type { WorkflowsService } from "./services/workflows.service";
 
+/**
+ * Services required to compose the Express application.
+ */
 export type AppDependencies = {
     readonly workflowsService: WorkflowsService;
 };
@@ -29,6 +32,12 @@ function parseCorsOrigin(corsOrigin: string): CorsOptions["origin"] {
     return origins.length === 1 ? origins[0] : origins;
 }
 
+/**
+ * Builds the Express app without starting a listener.
+ *
+ * This is the composition boundary for HTTP middleware, health checks, routes,
+ * and the terminal error handler.
+ */
 export function buildApp(deps: AppDependencies): express.Express {
     const app = express();
 

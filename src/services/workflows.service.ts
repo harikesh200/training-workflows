@@ -9,8 +9,17 @@ import { runWorkflow } from "./workflows/workflowRunner.service";
 import type { WorkflowsRepository } from "../repositories/localWorkflow.repository";
 import type { WorkflowArtifact, WorkflowJob } from "../types/workflows.types";
 
+/**
+ * Public workflow application service used by the HTTP layer.
+ */
 export type WorkflowsService = ReturnType<typeof createWorkflowsService>;
 
+/**
+ * Creates the workflow application service.
+ *
+ * This service owns job creation, public job projection, artifact access, and
+ * background workflow dispatch.
+ */
 export function createWorkflowsService(deps: {
     readonly uploadsDir: string;
     readonly artifactsDir: string;

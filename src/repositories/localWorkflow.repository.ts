@@ -3,10 +3,16 @@ import path from "node:path";
 import { NotFoundError } from "../http/errors";
 import { workflowJobSchema, type WorkflowJob } from "../types/workflows.types";
 
+/**
+ * Persistence boundary for workflow job state.
+ */
 export type WorkflowsRepository = ReturnType<
     typeof createLocalWorkflowRepository
 >;
 
+/**
+ * Creates a filesystem-backed workflow repository using one JSON file per job.
+ */
 export function createLocalWorkflowRepository(options: {
     readonly jobsDir: string;
 }) {

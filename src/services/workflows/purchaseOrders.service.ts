@@ -9,6 +9,10 @@ import type {
 import type { WorkflowArtifact } from "../../types/workflows.types";
 import { cleanPartName, groupBy, safeFilePart } from "../../utils/workflowUtils";
 
+/**
+ * Matches recommended parts to vendors and writes one invoice artifact per
+ * matched vendor.
+ */
 export async function runPurchaseOrders(input: {
     readonly artifactsDir: string;
     readonly vendorCatalogPath: string;

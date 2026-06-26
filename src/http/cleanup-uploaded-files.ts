@@ -23,6 +23,9 @@ function uploadedFilePaths(files: unknown): string[] {
         .filter((filePath) => filePath.length > 0);
 }
 
+/**
+ * Removes Multer temp files after failed upload-backed requests.
+ */
 export const cleanupUploadedFilesOnError: RequestHandler = (req, res, next) => {
     const filePaths = uploadedFilePaths(req.files);
 

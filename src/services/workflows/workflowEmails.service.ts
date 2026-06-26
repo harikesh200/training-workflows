@@ -2,6 +2,9 @@ import path from "node:path";
 import { logger } from "../../logger";
 import type { EmailService } from "../../services/smtp-email.service";
 
+/**
+ * Sends generated purchase-order invoices to vendors by ordered email mapping.
+ */
 export async function sendVendorEmails(input: {
     readonly emailService: EmailService;
     readonly invoiceFiles: ReadonlyMap<string, string>;
@@ -61,6 +64,9 @@ export async function sendVendorEmails(input: {
     return { resolvedVendorEmails, emailStatus };
 }
 
+/**
+ * Sends the final text summary report to the plant-head recipient.
+ */
 export async function sendPlantHeadReport(input: {
     readonly emailService: EmailService;
     readonly senderEmail: string;

@@ -19,6 +19,9 @@ const upload = multer({
     },
 });
 
+/**
+ * Wires workflow routes, upload handling, request validation, and controllers.
+ */
 export function makeWorkflowsRouter(service: WorkflowsService): Router {
     const router = Router();
     const controller = makeWorkflowsController(service);

@@ -3,6 +3,10 @@ import { ZodError, z } from "zod";
 import { AppError, ValidationError } from "./errors";
 import { logger } from "../logger";
 
+/**
+ * Terminal Express error middleware that maps operational errors to the public
+ * error envelope and hides unexpected internals behind a 500 response.
+ */
 export const errorHandler: ErrorRequestHandler = (
     err: unknown,
     req,

@@ -9,6 +9,13 @@ import type {
 } from "../../types/workflows.domain";
 import type { WorkflowArtifact } from "../../types/workflows.types";
 
+/**
+ * Builds both summary artifacts for a completed workflow.
+ *
+ * The tabular report is the source-of-record CSV. The text report is generated
+ * from bounded aggregates so the model summarizes evidence instead of seeing
+ * raw workflow rows.
+ */
 export async function runSummaryReport(input: {
     readonly artifactsDir: string;
     readonly reportService: ReportService;
@@ -37,14 +44,31 @@ export async function runSummaryReport(input: {
     await writeCsv(tabularSummaryPath, summaryRows);
 
     const severitySummary = summarizeCounts(
-        summaryRows.map((row) => row.severity),
+        input.agent1Rows.map((row) => row.severity),
+    );
+    const machineIssueSummary = summarizeCounts(
+        input.agent1Rows.map(
+            (row) => `${row.machine_name} (${row.machine_id})`,
+        ),
+    );
+    const errorCodeSummary = summarizeCounts(
+        input.agent1Rows.map((row) => row.error_code),
+    );
+    const partDemandSummary = summarizeCounts(
+        input.agent1Rows.map((row) => row.part_name),
     );
     const vendorCostSummary = summarizeVendorCosts(summaryRows);
     const emailStatusSummary = summarizeCounts(
         summaryRows.map((row) => row.vendor_email_status),
     );
     const report = await input.reportService.generateSummary({
+        detectedIssueCount: input.agent1Rows.length,
+        summaryRowCount: summaryRows.length,
+        timeRangeSummary: summarizeTimeRange(input.agent1Rows),
         severitySummary,
+        machineIssueSummary,
+        errorCodeSummary,
+        partDemandSummary,
         vendorCostSummary,
         emailStatusSummary,
     });
@@ -72,6 +96,10 @@ export async function runSummaryReport(input: {
     };
 }
 
+/**
+ * Expands maintenance findings into report rows by attaching every matching
+ * vendor option for the recommended part.
+ */
 function buildSummaryRows(
     agent1Rows: readonly Agent1OutputRow[],
     errorPartVendorRows: readonly ErrorPartVendorRow[],
@@ -107,6 +135,9 @@ function buildSummaryRows(
     return rows;
 }
 
+/**
+ * Matches a vendor row back to the exact maintenance finding that produced it.
+ */
 function sameAgentRow(left: Agent1OutputRow, right: Agent1OutputRow): boolean {
     return (
         left.timestamp === right.timestamp &&
@@ -118,6 +149,9 @@ function sameAgentRow(left: Agent1OutputRow, right: Agent1OutputRow): boolean {
     );
 }
 
+/**
+ * Provides stable CSV ordering for deterministic artifacts.
+ */
 function compareSummaryRows(left: SummaryRow, right: SummaryRow): number {
     return (
         left.timestamp.localeCompare(right.timestamp) ||
@@ -127,16 +161,34 @@ function compareSummaryRows(left: SummaryRow, right: SummaryRow): number {
     );
 }
 
+/**
+ * Returns the top five occurrence counts as a compact prompt-safe string.
+ */
 function summarizeCounts(values: readonly string[]): string {
     const counts = new Map<string, number>();
     for (const value of values) {
-        counts.set(value, (counts.get(value) ?? 0) + 1);
+        const normalizedValue = value.trim();
+        if (normalizedValue.length === 0) {
+            continue;
+        }
+        counts.set(normalizedValue, (counts.get(normalizedValue) ?? 0) + 1);
     }
-    return Array.from(counts.entries())
-        .map(([value, count]) => `${value}: ${count} occurrences`)
-        .join(", ");
+    return (
+        Array.from(counts.entries())
+            .sort(
+                ([leftValue, leftCount], [rightValue, rightCount]) =>
+                    rightCount - leftCount ||
+                    leftValue.localeCompare(rightValue),
+            )
+            .slice(0, 5)
+            .map(([value, count]) => `${value}: ${count} occurrences`)
+            .join(", ") || "None"
+    );
 }
 
+/**
+ * Returns the top five vendor totals from matched part prices.
+ */
 function summarizeVendorCosts(rows: readonly SummaryRow[]): string {
     const costs = new Map<string, number>();
     for (const row of rows) {
@@ -149,7 +201,34 @@ function summarizeVendorCosts(rows: readonly SummaryRow[]): string {
         }
         costs.set(row.vendor, (costs.get(row.vendor) ?? 0) + price);
     }
-    return Array.from(costs.entries())
-        .map(([vendor, amount]) => `${vendor}: ${amount.toFixed(2)}`)
-        .join(", ");
+    return (
+        Array.from(costs.entries())
+            .sort(
+                ([leftVendor, leftAmount], [rightVendor, rightAmount]) =>
+                    rightAmount - leftAmount ||
+                    leftVendor.localeCompare(rightVendor),
+            )
+            .slice(0, 5)
+            .map(([vendor, amount]) => `${vendor}: ${amount.toFixed(2)}`)
+            .join(", ") || "None"
+    );
+}
+
+/**
+ * Returns the analyzed log timestamp range used in the text report.
+ */
+function summarizeTimeRange(rows: readonly Agent1OutputRow[]): string {
+    const timestamps = rows
+        .map((row) => row.timestamp.trim())
+        .filter((timestamp) => timestamp.length > 0)
+        .sort((left, right) => left.localeCompare(right));
+    const firstTimestamp = timestamps[0];
+    const lastTimestamp = timestamps[timestamps.length - 1];
+    if (!firstTimestamp || !lastTimestamp) {
+        return "Not available";
+    }
+    if (firstTimestamp === lastTimestamp) {
+        return firstTimestamp;
+    }
+    return `${firstTimestamp} to ${lastTimestamp}`;
 }
