@@ -1,6 +1,6 @@
 import path from "node:path";
-import { ValidationError } from "../../http/errors";
-import { readCell, readCsvRows, writeCsv } from "../../utils/csvFiles";
+import * as z from "zod";
+import { readCsvRows, writeCsv } from "../../utils/csvFiles";
 import type {
     Agent1OutputRow,
     ErrorPartVendorRow,
@@ -8,6 +8,23 @@ import type {
 } from "../../types/workflows.domain";
 import type { WorkflowArtifact } from "../../types/workflows.types";
 import { cleanPartName, groupBy, safeFilePart } from "../../utils/workflowUtils";
+
+const vendorCatalogRowSchema = z.object({
+    part_name: z.string().trim().min(1),
+    vendor: z.string().trim().min(1),
+    delivery_time: z.string().trim().min(1),
+    price: z.string().trim().min(1).transform((value, ctx) => {
+        const price = Number(value);
+        if (!Number.isFinite(price)) {
+            ctx.addIssue({
+                code: "custom",
+                message: "price must be numeric",
+            });
+            return z.NEVER;
+        }
+        return price;
+    }),
+});
 
 /**
  * Matches recommended parts to vendors and writes one invoice artifact per
@@ -24,19 +41,16 @@ export async function runPurchaseOrders(input: {
     readonly invoiceVendors: readonly string[];
     readonly artifacts: readonly WorkflowArtifact[];
 }> {
-    const vendorCatalog = await readCsvRows(input.vendorCatalogPath);
+    const vendorCatalog = await readCsvRows(
+        input.vendorCatalogPath,
+        vendorCatalogRowSchema,
+    );
     const vendorsByPart = new Map<string, ErrorPartVendorRow[]>();
 
     for (const vendorRow of vendorCatalog) {
-        const partName = cleanPartName(readCell(vendorRow, "part_name"));
-        const vendor = readCell(vendorRow, "vendor");
-        const price = Number(readCell(vendorRow, "price"));
-        if (!Number.isFinite(price)) {
-            throw new ValidationError(
-                "Vendor catalog contains a non-numeric price",
-            );
-        }
-        const deliveryTime = readCell(vendorRow, "delivery_time");
+        const partName = cleanPartName(vendorRow.part_name);
+        const vendor = vendorRow.vendor;
+        const deliveryTime = vendorRow.delivery_time;
         const rows = vendorsByPart.get(partName) ?? [];
         rows.push({
             timestamp: "",
@@ -46,7 +60,7 @@ export async function runPurchaseOrders(input: {
             severity: "",
             part_name: partName,
             vendor,
-            price,
+            price: vendorRow.price,
             delivery_time: deliveryTime,
         });
         vendorsByPart.set(partName, rows);

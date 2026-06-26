@@ -1,9 +1,17 @@
 import path from "node:path";
+import * as z from "zod";
 import { parseErrorManual } from "./errorManualParser.service";
-import { readCell, readCsvRows, writeCsv } from "../../utils/csvFiles";
+import { readCsvRows, writeCsv } from "../../utils/csvFiles";
 import type { Agent1OutputRow } from "../../types/workflows.domain";
 import type { WorkflowArtifact } from "../../types/workflows.types";
 import { cleanPartName } from "../../utils/workflowUtils";
+
+const machineLogRowSchema = z.object({
+    timestamp: z.string().trim(),
+    machine_id: z.string().trim().min(1),
+    machine_name: z.string().trim().min(1),
+    error_code: z.string().trim(),
+});
 
 /**
  * Analyzes machine logs against the parsed error manual and writes the
@@ -19,11 +27,11 @@ export async function runLogAnalysis(input: {
     readonly artifact: WorkflowArtifact;
 }> {
     const manual = await parseErrorManual(input.errorManualPath);
-    const logs = await readCsvRows(input.machineLogsPath);
+    const logs = await readCsvRows(input.machineLogsPath, machineLogRowSchema);
     const rows: Agent1OutputRow[] = [];
 
     for (const logRow of logs) {
-        const errorCode = readCell(logRow, "error_code");
+        const errorCode = logRow.error_code;
         if (errorCode.length === 0 || errorCode === "None") {
             continue;
         }
@@ -34,9 +42,9 @@ export async function runLogAnalysis(input: {
 
         if (parts.length === 0) {
             rows.push({
-                timestamp: readCell(logRow, "timestamp"),
-                machine_id: readCell(logRow, "machine_id"),
-                machine_name: readCell(logRow, "machine_name"),
+                timestamp: logRow.timestamp,
+                machine_id: logRow.machine_id,
+                machine_name: logRow.machine_name,
                 error_code: errorCode,
                 severity,
                 part_name: "Unknown",
@@ -46,9 +54,9 @@ export async function runLogAnalysis(input: {
 
         for (const part of parts) {
             rows.push({
-                timestamp: readCell(logRow, "timestamp"),
-                machine_id: readCell(logRow, "machine_id"),
-                machine_name: readCell(logRow, "machine_name"),
+                timestamp: logRow.timestamp,
+                machine_id: logRow.machine_id,
+                machine_name: logRow.machine_name,
                 error_code: errorCode,
                 severity,
                 part_name: cleanPartName(part),

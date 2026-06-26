@@ -7,18 +7,41 @@ import type { WorkflowsService } from "../services/workflows.service";
 
 const uploadFields = ["machineLogs", "errorManual", "vendorCatalog"] as const;
 type UploadField = (typeof uploadFields)[number];
+type UploadedFileMap = Partial<Record<UploadField, readonly unknown[]>>;
+
+function isUploadedFileMap(files: unknown): files is UploadedFileMap {
+    return Boolean(files) && typeof files === "object" && !Array.isArray(files);
+}
+
+function isUploadedFile(file: unknown): file is Express.Multer.File {
+    return (
+        file !== null &&
+        typeof file === "object" &&
+        "path" in file &&
+        typeof file.path === "string" &&
+        file.path.length > 0
+    );
+}
+
+function firstUploadedFile(
+    files: UploadedFileMap,
+    field: UploadField,
+): Express.Multer.File | undefined {
+    const candidates = files[field];
+    if (!Array.isArray(candidates)) {
+        return undefined;
+    }
+    return candidates.find(isUploadedFile);
+}
 
 function pickUploadedFiles(files: unknown): UploadedWorkflowFiles {
-    if (!files || typeof files !== "object" || Array.isArray(files)) {
+    if (!isUploadedFileMap(files)) {
         throw new BadRequestError("Workflow upload files are required");
     }
 
-    const fileMap = files as Partial<
-        Record<UploadField, readonly Express.Multer.File[]>
-    >;
-    const machineLogs = fileMap.machineLogs?.[0];
-    const errorManual = fileMap.errorManual?.[0];
-    const vendorCatalog = fileMap.vendorCatalog?.[0];
+    const machineLogs = firstUploadedFile(files, "machineLogs");
+    const errorManual = firstUploadedFile(files, "errorManual");
+    const vendorCatalog = firstUploadedFile(files, "vendorCatalog");
 
     if (!machineLogs || !errorManual || !vendorCatalog) {
         throw new BadRequestError(
@@ -40,8 +63,12 @@ function requiredParam(value: string | string[] | undefined, name: string): stri
  * Creates HTTP handlers for workflow creation, lookup, and artifact download.
  */
 export function makeWorkflowsController(service: WorkflowsService) {
-    const create: RequestHandler = async (req, res) => {
-        const body = req.body as CreateWorkflowBody;
+    const create: RequestHandler<
+        Record<string, never>,
+        unknown,
+        CreateWorkflowBody
+    > = async (req, res) => {
+        const body = req.body;
         const files = pickUploadedFiles(req.files);
         const job = await service.createWorkflow({
             files,

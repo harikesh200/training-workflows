@@ -1,38 +1,33 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
-import * as z from "zod";
+import { ZodError, z, type ZodType } from "zod";
 import { ValidationError } from "../http/errors";
 
-const csvRowsSchema = z.array(z.record(z.string(), z.unknown()));
-
 /**
- * Reads a CSV file into validated object rows using the header row as keys.
+ * Reads a CSV file into rows validated by the caller-provided row schema.
  */
-export async function readCsvRows(
+export async function readCsvRows<Row>(
     filePath: string,
-): Promise<readonly Record<string, unknown>[]> {
+    rowSchema: ZodType<Row>,
+): Promise<readonly Row[]> {
     const content = await readFile(filePath, "utf8");
     const parsed: unknown = parse(content, {
         columns: true,
         skip_empty_lines: true,
         trim: true,
     });
-    return csvRowsSchema.parse(parsed);
-}
-
-/**
- * Reads a required CSV cell as a trimmed string.
- */
-export function readCell(
-    row: Readonly<Record<string, unknown>>,
-    key: string,
-): string {
-    const value = row[key];
-    if (value === null || value === undefined) {
-        throw new ValidationError(`CSV column ${key} is required`);
+    try {
+        return z.array(rowSchema).parse(parsed);
+    } catch (err) {
+        if (err instanceof ZodError) {
+            throw new ValidationError(
+                "CSV file does not match the expected columns",
+                z.flattenError(err),
+            );
+        }
+        throw err;
     }
-    return String(value).trim();
 }
 
 /**
