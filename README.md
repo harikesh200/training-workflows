@@ -1,59 +1,193 @@
-# Machine Maintenance Workflow Backend
+# Machine Maintenance Workflow API
 
-Job-based TypeScript/Express backend converted from `Agentic_Manufacturing_singlebtn.ipynb`.
+Job-based machine-maintenance automation built with Bun, TypeScript, and
+Express. The service converts the workflow from
+`Agentic_Manufacturing_singlebtn.ipynb` into an asynchronous HTTP API that:
 
-## Setup
+1. analyzes machine-log errors against a PDF maintenance manual;
+2. matches recommended replacement parts to a vendor catalog;
+3. creates one purchase-order CSV per matched vendor;
+4. sends purchase orders through Gmail SMTP;
+5. generates a plant-level summary with OpenAI; and
+6. emails the final text report to the plant head.
 
-```bash
+Workflow state is persisted locally as JSON, and generated reports remain
+available through artifact download endpoints.
+
+## Prerequisites
+
+- [Bun](https://bun.sh/) 1.3.14 or later
+- An OpenAI API key
+- Gmail SMTP sender credentials for email delivery
+
+The API can be used directly or with the companion React operations console.
+
+## Quick Start
+
+Install dependencies and create the local environment file:
+
+```powershell
 bun install
-copy .env.example .env
+Copy-Item .env.example .env
+```
+
+Set `OPENAI_API_KEY` in `.env`, then start the development server:
+
+```powershell
 bun run dev
 ```
 
-Set `OPENAI_API_KEY` in `.env`. SMTP credentials are intentionally provided per workflow request and are not written to disk.
+The API listens on `http://localhost:3000` by default.
 
-Useful commands:
+| URL | Purpose |
+| --- | --- |
+| `http://localhost:3000/health` | Liveness check |
+| `http://localhost:3000/ready` | Readiness check |
+| `http://localhost:3000/v1/workflows` | Workflow API |
 
-- `bun run dev` starts the API with Bun watch mode.
-- `bun run start` starts through `src/bootstrap.ts`, matching the reference POC's hosted/Lambda temp-dir handling.
-- `bun run typecheck` runs TypeScript validation.
-- `bun run build` bundles the backend for Bun into `dist/server.js`.
+The root URL intentionally returns `404`; this project exposes an API rather
+than a web page.
 
-## Source Layout
+### Optional Frontend
 
-The backend follows the same high-level layout as `D:\Mail Automation POC`:
+If `Training Workflows Frontend` is checked out beside this repository, start
+it in a second terminal:
 
-- `src/controllers`: HTTP request/response translation
-- `src/routes`: route wiring only
-- `src/schemas`: Zod request contracts
-- `src/services`: workflow orchestration and external service clients
-- `src/repositories`: local file-backed job persistence
-- `src/types`: workflow domain and API types
-- `src/utils`: shared CSV and filename helpers
+```powershell
+Set-Location "..\Training Workflows Frontend"
+corepack enable
+pnpm install
+pnpm dev
+```
 
-## Create Workflow
+Open `http://localhost:5173`. The frontend uses
+`http://localhost:3000` by default; set `VITE_API_BASE_URL` in its
+`.env.local` file to target a different API.
+
+## Environment
+
+Configuration is loaded from `.env` and validated when the process starts.
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `OPENAI_API_KEY` | Yes | — | API key used to generate the text summary |
+| `OPENAI_MODEL` | No | `gpt-4o` | OpenAI model passed to the Responses API |
+| `PORT` | No | `3000` | HTTP server port |
+| `NODE_ENV` | No | `development` | `development`, `test`, or `production` |
+| `LOG_LEVEL` | No | `info` | Pino log level |
+| `CORS_ORIGIN` | No | `http://localhost:5173,http://localhost:3000` | Comma-separated allowed origins, or `*` |
+
+SMTP credentials are supplied with each workflow request. The password is
+held only for the running workflow and is not written to job storage.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `bun run dev` | Start the API in watch mode |
+| `bun run start` | Start through `src/bootstrap.ts`, including AWS Lambda temporary-directory setup |
+| `bun run typecheck` | Run strict TypeScript checks |
+| `bun run test` | Run the Bun test suite; succeeds when no tests exist |
+| `bun run build` | Bundle the API to `dist/server.js` |
+| `bun dist/server.js` | Run the generated bundle |
+
+## Workflow Inputs
+
+`POST /v1/workflows` accepts `multipart/form-data`. Each uploaded file is
+limited to 10 MiB.
+
+| Field | Type | Requirement |
+| --- | --- | --- |
+| `machineLogs` | File | CSV with `timestamp`, `machine_id`, `machine_name`, and `error_code` |
+| `errorManual` | File | PDF containing the error-manual format described below |
+| `vendorCatalog` | File | CSV with `part_name`, `vendor`, `delivery_time`, and numeric `price` |
+| `senderEmail` | Text | Gmail SMTP sender address |
+| `senderPassword` | Text | SMTP password or app password |
+| `vendorEmails` | Text | JSON array of valid email addresses |
+| `plantHeadEmail` | Text | Final report recipient |
+
+CSV headers are trimmed and matched case-insensitively. Extra columns are
+ignored.
+
+### Machine Logs
+
+```csv
+timestamp,machine_id,machine_name,error_code
+10-02-2025 07:22,PLT1-Z3-FEEDER-30,Feed Mechanism,E108
+10-02-2025 09:51,PLT1-Z3-PRESS-44,Hydraulic Press,None
+```
+
+Rows with an empty error code or `None` are skipped.
+
+### Error Manual
+
+The PDF text must contain blocks in this format:
+
+```text
+Error Code: E108
+1) Error Description: ...
+2) Possible Causes: a) ... b) ...
+3) Recommended Part Replacement: a) ... b) ...
+4) Severity: High
+```
+
+Error codes must use the `E` followed by digits format. Recommended part names
+are matched case-sensitively to the vendor catalog after whitespace and hyphen
+normalization.
+
+### Vendor Catalog
+
+```csv
+part_name,vendor,delivery_time,price
+Feeder Motor Coupling 12B,VendorA,2 days,4333
+Feeder Motor Coupling 12B,VendorB,3 days,4199
+```
+
+Generated invoice vendors are sorted alphabetically. `vendorEmails` is mapped
+to that sorted list by position, so the first email belongs to the first
+vendor, the second email to the second vendor, and so on. Missing addresses
+produce a `no_email_configured` status; extra addresses are unused.
+
+## API
+
+Successful JSON responses use a `{ "data": ... }` envelope. Errors use:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request",
+    "details": {}
+  }
+}
+```
+
+### Create a Workflow
 
 ```http
 POST /v1/workflows
 Content-Type: multipart/form-data
 ```
 
-Fields:
+Example:
 
-- `machineLogs`: CSV file with `timestamp`, `machine_id`, `machine_name`, `error_code`
-- `errorManual`: PDF file using the notebook's `Error Code: E###` manual format
-- `vendorCatalog`: CSV file with `part_name`, `vendor`, `price`, `delivery_time`
-- `senderEmail`: SMTP sender email
-- `senderPassword`: SMTP sender password
-- `vendorEmails`: JSON array string, mapped to generated invoice vendors in the same ordered style as the notebook
-- `plantHeadEmail`: report recipient email
+```bash
+curl -X POST http://localhost:3000/v1/workflows \
+  -F "machineLogs=@machine_logs.csv" \
+  -F "errorManual=@error_manual.pdf" \
+  -F "vendorCatalog=@vendor_catalog.csv" \
+  -F "senderEmail=sender@gmail.com" \
+  -F "senderPassword=app-password" \
+  -F 'vendorEmails=["vendor-a@example.com","vendor-b@example.com"]' \
+  -F "plantHeadEmail=plant-head@example.com"
+```
 
-Response:
+The API returns `202 Accepted` after persisting the queued job:
 
 ```json
 {
   "data": {
-    "id": "wf_...",
+    "id": "wf_8b9f8c4a-...",
     "status": "queued",
     "currentStep": "queued",
     "progress": 0
@@ -61,23 +195,108 @@ Response:
 }
 ```
 
-## Poll Workflow
+### Get Workflow Status
 
 ```http
 GET /v1/workflows/:id
 ```
 
-Returns job status, progress, resolved vendor-email mapping, generated artifact names, and errors.
+The response contains status, progress, vendor-email mappings, artifact
+metadata, timestamps, and any terminal error:
 
-## Download Artifacts
+```json
+{
+  "data": {
+    "id": "wf_8b9f8c4a-...",
+    "status": "succeeded",
+    "currentStep": "completed",
+    "progress": 100,
+    "senderEmail": "sender@gmail.com",
+    "vendorEmailList": ["vendor-a@example.com"],
+    "resolvedVendorEmails": {
+      "VendorA": "vendor-a@example.com"
+    },
+    "plantHeadEmail": "plant-head@example.com",
+    "artifacts": [
+      {
+        "name": "agent1-output",
+        "contentType": "text/csv"
+      }
+    ],
+    "error": null,
+    "createdAt": "2026-06-29T10:00:00.000Z",
+    "updatedAt": "2026-06-29T10:00:05.000Z",
+    "completedAt": "2026-06-29T10:00:05.000Z"
+  }
+}
+```
+
+Workflow statuses are `queued`, `running`, `succeeded`, and `failed`.
+Running jobs progress through:
+
+1. `uploads_saved`
+2. `log_analysis`
+3. `purchase_orders`
+4. `vendor_emails`
+5. `summary_report`
+6. `plant_head_email`
+
+Vendor email failures are recorded in the summary but do not stop the
+workflow. A failed OpenAI summary or plant-head email marks the job as
+`failed`.
+
+### Download an Artifact
 
 ```http
 GET /v1/workflows/:id/artifacts/:name
 ```
 
-Common artifact names:
+Artifact names are returned by the status endpoint:
 
-- `agent1-output`
-- `invoice-<vendor>`
-- `tabular-summary`
-- `text-summary`
+| Name | Content |
+| --- | --- |
+| `agent1-output` | Analyzed maintenance findings CSV |
+| `invoice-<vendor>` | Aggregated purchase-order CSV for one vendor |
+| `tabular-summary` | Full workflow summary CSV |
+| `text-summary` | OpenAI-generated leadership report |
+
+Vendor segments in artifact names are sanitized to letters, numbers,
+underscores, and hyphens.
+
+## Local Storage
+
+Runtime data is created under `data/`:
+
+```text
+data/
+├── uploads/<workflow-id>/      # Saved workflow inputs
+├── artifacts/<workflow-id>/    # Generated CSV and text files
+└── jobs/<workflow-id>.json     # Persisted job state
+```
+
+These paths are excluded from Git. Job records contain email addresses and
+local file paths, but not SMTP passwords.
+
+This repository uses an in-process workflow runner and local filesystem
+storage. It does not resume interrupted jobs after a process restart and is
+not suitable for horizontally scaled deployment without replacing those
+components with shared durable infrastructure.
+
+## Project Structure
+
+```text
+src/
+├── config/          # Validated environment and storage paths
+├── controllers/     # HTTP request and response translation
+├── http/            # Validation, errors, request IDs, and upload cleanup
+├── repositories/    # Filesystem-backed workflow persistence
+├── routes/          # Express route wiring
+├── schemas/         # Zod request contracts
+├── services/        # Workflow stages and external service adapters
+├── types/           # Domain and persisted workflow types
+└── utils/           # CSV and workflow helpers
+```
+
+`src/app.ts` composes the Express application, `src/server.ts` creates
+dependencies and starts the listener, and `src/bootstrap.ts` configures
+temporary paths before loading the server in AWS Lambda environments.
