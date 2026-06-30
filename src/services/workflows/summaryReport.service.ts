@@ -43,34 +43,31 @@ export async function runSummaryReport(input: {
     );
     await writeCsv(tabularSummaryPath, summaryRows);
 
-    const severitySummary = summarizeCounts(
-        input.agent1Rows.map((row) => row.severity),
-    );
-    const machineIssueSummary = summarizeCounts(
-        input.agent1Rows.map(
-            (row) => `${row.machine_name} (${row.machine_id})`,
-        ),
-    );
-    const errorCodeSummary = summarizeCounts(
-        input.agent1Rows.map((row) => row.error_code),
-    );
-    const partDemandSummary = summarizeCounts(
-        input.agent1Rows.map((row) => row.part_name),
-    );
-    const vendorCostSummary = summarizeVendorCosts(summaryRows);
-    const emailStatusSummary = summarizeCounts(
-        summaryRows.map((row) => row.vendor_email_status),
-    );
     const report = await input.reportService.generateSummary({
-        detectedIssueCount: input.agent1Rows.length,
-        summaryRowCount: summaryRows.length,
-        timeRangeSummary: summarizeTimeRange(input.agent1Rows),
-        severitySummary,
-        machineIssueSummary,
-        errorCodeSummary,
-        partDemandSummary,
-        vendorCostSummary,
-        emailStatusSummary,
+        findingCount: input.agent1Rows.length,
+        unmatchedFindingCount: summaryRows.filter(
+            (row) => row.vendor.length === 0,
+        ).length,
+        analysisPeriod: summarizeTimeRange(input.agent1Rows),
+        severityProfile: summarizeCounts(
+            input.agent1Rows.map((row) => row.severity),
+        ),
+        recurringMachines: summarizeCounts(
+            input.agent1Rows.map(
+                (row) => `${row.machine_name} (${row.machine_id})`,
+            ),
+        ),
+        recurringErrorCodes: summarizeCounts(
+            input.agent1Rows.map((row) => row.error_code),
+        ),
+        requiredParts: summarizeCounts(
+            input.agent1Rows.map((row) => row.part_name),
+        ),
+        vendorCostExposure: summarizeVendorCosts(summaryRows),
+        purchaseOrderDelivery:
+            Object.entries(input.emailStatus)
+                .map(([vendor, status]) => `${vendor}: ${status}`)
+                .join(", ") || "No purchase orders generated",
     });
 
     const textSummaryPath = path.join(

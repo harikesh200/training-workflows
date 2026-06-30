@@ -260,6 +260,11 @@ Artifact names are returned by the status endpoint:
 | `tabular-summary` | Full workflow summary CSV |
 | `text-summary` | OpenAI-generated leadership report |
 
+The text report is written as a plant-head executive brief with an overview,
+maintenance assessment, procurement and delivery position, management
+actions, and conclusion. Email outcomes are counted once per purchase-order
+vendor rather than once per duplicated summary row.
+
 Vendor segments in artifact names are sanitized to letters, numbers,
 underscores, and hyphens.
 
