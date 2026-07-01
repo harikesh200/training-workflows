@@ -61,6 +61,37 @@ export function buildApp(deps: AppDependencies): express.Express {
                 "req.headers.cookie",
                 "req.body.senderPassword",
             ],
+            customLogLevel(req, res, err) {
+                if (err || res.statusCode >= 500) {
+                    return "error";
+                }
+                if (res.statusCode >= 400) {
+                    return "warn";
+                }
+
+                const path = req.url?.split("?", 1)[0];
+                const isRoutineRequest =
+                    path === "/health" ||
+                    path === "/ready" ||
+                    (req.method === "GET" &&
+                        /^\/v1\/workflows\/[^/]+$/.test(path ?? ""));
+
+                return isRoutineRequest ? "silent" : "info";
+            },
+            wrapSerializers: false,
+            serializers: {
+                req(req) {
+                    return {
+                        method: req.method,
+                        url: req.url,
+                    };
+                },
+                res(res) {
+                    return {
+                        statusCode: res.statusCode,
+                    };
+                },
+            },
         }),
     );
 

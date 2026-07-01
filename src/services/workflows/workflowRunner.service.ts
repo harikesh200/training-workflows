@@ -18,29 +18,32 @@ type WorkflowRunnerDeps = {
     readonly emailService: EmailService;
 };
 
+export type WorkflowProgressListener = (job: WorkflowJob) => void;
+
 /**
- * Executes the asynchronous workflow entirely in memory.
+ * Executes the workflow entirely in memory and reports persisted state changes.
  */
 export async function runWorkflow(
     deps: WorkflowRunnerDeps,
     jobId: string,
     runtime: RuntimeWorkflowInput,
-): Promise<void> {
-    let job = await advance(deps, jobId, "uploads_saved", 5);
+    onProgress?: WorkflowProgressListener,
+): Promise<WorkflowJob> {
+    let job = await advance(deps, jobId, "uploads_saved", 5, onProgress);
     try {
-        job = await advance(deps, job.id, "log_analysis", 20);
+        job = await advance(deps, job.id, "log_analysis", 20, onProgress);
         const agent1Rows = await runLogAnalysis({
             errorManual: runtime.files.errorManual,
             machineLogs: runtime.files.machineLogs,
         });
 
-        job = await advance(deps, job.id, "purchase_orders", 45);
+        job = await advance(deps, job.id, "purchase_orders", 45, onProgress);
         const purchaseOrders = runPurchaseOrders({
             vendorCatalog: runtime.files.vendorCatalog,
             agent1Rows,
         });
 
-        job = await advance(deps, job.id, "vendor_emails", 65);
+        job = await advance(deps, job.id, "vendor_emails", 65, onProgress);
         const emailResult = await sendVendorEmails({
             emailService: deps.emailService,
             invoices: purchaseOrders.invoices,
@@ -54,7 +57,7 @@ export async function runWorkflow(
             resolvedVendorEmails: emailResult.resolvedVendorEmails,
         });
 
-        job = await advance(deps, job.id, "summary_report", 85);
+        job = await advance(deps, job.id, "summary_report", 85, onProgress);
         const executiveReport = await runSummaryReport({
             reportService: deps.reportService,
             workflowId: job.id,
@@ -63,7 +66,13 @@ export async function runWorkflow(
             emailStatus: emailResult.emailStatus,
         });
 
-        job = await advance(deps, job.id, "plant_head_email", 95);
+        job = await advance(
+            deps,
+            job.id,
+            "plant_head_email",
+            95,
+            onProgress,
+        );
         await sendPlantHeadReport({
             emailService: deps.emailService,
             senderEmail: job.senderEmail,
@@ -72,11 +81,11 @@ export async function runWorkflow(
             report: executiveReport,
         });
 
-        await markSucceeded(deps, job);
+        return markSucceeded(deps, job, onProgress);
     } catch (err) {
         const message = err instanceof Error ? err.message : "Workflow failed";
         logger.error({ err, workflowId: jobId }, "Workflow execution failed");
-        await markFailed(deps, jobId, message);
+        return markFailed(deps, jobId, message, onProgress);
     }
 }
 
@@ -85,6 +94,7 @@ async function advance(
     jobId: string,
     step: WorkflowRunningStep,
     progress: number,
+    onProgress?: WorkflowProgressListener,
 ): Promise<WorkflowJob> {
     const current = await deps.workflowsRepository.get(jobId);
     const next: WorkflowJob = {
@@ -95,12 +105,15 @@ async function advance(
         error: null,
         completedAt: null,
     };
-    return deps.workflowsRepository.update(next);
+    const updated = await deps.workflowsRepository.update(next);
+    emitProgress(onProgress, updated);
+    return updated;
 }
 
 async function markSucceeded(
     deps: WorkflowRunnerDeps,
     current: WorkflowJob,
+    onProgress?: WorkflowProgressListener,
 ): Promise<WorkflowJob> {
     const next: WorkflowJob = {
         ...current,
@@ -110,13 +123,16 @@ async function markSucceeded(
         error: null,
         completedAt: new Date().toISOString(),
     };
-    return deps.workflowsRepository.update(next);
+    const updated = await deps.workflowsRepository.update(next);
+    emitProgress(onProgress, updated);
+    return updated;
 }
 
 async function markFailed(
     deps: WorkflowRunnerDeps,
     jobId: string,
     message: string,
+    onProgress?: WorkflowProgressListener,
 ): Promise<WorkflowJob> {
     const current = await deps.workflowsRepository.get(jobId);
     const next: WorkflowJob = {
@@ -126,5 +142,21 @@ async function markFailed(
         error: message,
         completedAt: new Date().toISOString(),
     };
-    return deps.workflowsRepository.update(next);
+    const updated = await deps.workflowsRepository.update(next);
+    emitProgress(onProgress, updated);
+    return updated;
+}
+
+function emitProgress(
+    onProgress: WorkflowProgressListener | undefined,
+    job: WorkflowJob,
+): void {
+    try {
+        onProgress?.(job);
+    } catch (err) {
+        logger.warn(
+            { err, workflowId: job.id },
+            "Workflow progress listener failed",
+        );
+    }
 }

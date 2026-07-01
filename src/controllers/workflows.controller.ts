@@ -1,10 +1,17 @@
 import type { RequestHandler } from "express";
 import { BadRequestError } from "../http/errors";
+import { createServerSentEventStream } from "../http/server-sent-events";
 import type { CreateWorkflowBody } from "../schemas/workflows.schema";
 import type { UploadedWorkflowFiles } from "../types/workflows.types";
 import type { WorkflowsService } from "../services/workflows.service";
 
 const uploadFields = ["machineLogs", "errorManual", "vendorCatalog"] as const;
+const workflowEventByStatus = {
+    queued: "progress",
+    running: "progress",
+    succeeded: "completed",
+    failed: "failed",
+} as const;
 type UploadField = (typeof uploadFields)[number];
 type UploadedFileMap = Partial<Record<UploadField, readonly unknown[]>>;
 
@@ -73,24 +80,36 @@ export function makeWorkflowsController(service: WorkflowsService) {
     > = async (req, res) => {
         const body = req.body;
         const files = pickUploadedFiles(req.files);
-        const job = await service.createWorkflow({
-            files,
-            input: {
-                senderEmail: body.senderEmail,
-                senderPassword: body.senderPassword,
-                vendorEmailList: body.vendorEmails,
-                plantHeadEmail: body.plantHeadEmail,
-            },
-        });
+        const stream = createServerSentEventStream(res);
 
-        res.status(202).json({
-            data: {
-                id: job.id,
-                status: job.status,
-                currentStep: job.currentStep,
-                progress: job.progress,
-            },
-        });
+        try {
+            await service.createWorkflow(
+                {
+                    files,
+                    input: {
+                        senderEmail: body.senderEmail,
+                        senderPassword: body.senderPassword,
+                        vendorEmailList: body.vendorEmails,
+                        plantHeadEmail: body.plantHeadEmail,
+                    },
+                },
+                (job) => {
+                    stream.send(workflowEventByStatus[job.status], {
+                        data: service.toPublicJob(job),
+                    });
+                },
+            );
+        } catch (err) {
+            req.log?.error({ err }, "Workflow stream failed");
+            stream.send("failed", {
+                error: {
+                    code: "STREAM_FAILED",
+                    message: "Workflow stream failed",
+                },
+            });
+        } finally {
+            stream.close();
+        }
     };
 
     const get: RequestHandler = async (req, res) => {

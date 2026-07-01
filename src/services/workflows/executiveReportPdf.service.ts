@@ -14,6 +14,13 @@ const colors = {
     red: "#B42318",
     white: "#FFFFFF",
 } as const;
+const narrativeHeights = {
+    executiveOverview: 72,
+    maintenanceAssessment: 78,
+    procurementPosition: 75,
+    managementConclusion: 46,
+} as const;
+const attentionTextHeight = 42;
 
 export type ExecutivePriorityIssue = {
     readonly asset: string;
@@ -99,6 +106,7 @@ function drawFirstPage(
         "Executive Overview",
         input.content.executiveOverview,
         positionY,
+        narrativeHeights.executiveOverview,
     );
     positionY = drawAttentionPanel(
         document,
@@ -110,6 +118,7 @@ function drawFirstPage(
         "Maintenance Assessment",
         input.content.maintenanceAssessment,
         positionY + 14,
+        narrativeHeights.maintenanceAssessment,
     );
     drawPriorityIssues(document, input.priorityIssues, positionY + 14);
 }
@@ -126,6 +135,7 @@ function drawSecondPage(
         "Procurement and Delivery Position",
         input.content.procurementPosition,
         positionY,
+        narrativeHeights.procurementPosition,
     );
     positionY = drawVendorPositions(
         document,
@@ -260,22 +270,28 @@ function drawNarrativeSection(
     title: string,
     body: string,
     positionY: number,
+    maxBodyHeight: number,
 ): number {
     drawSectionTitle(document, title, positionY);
     const bodyY = positionY + 22;
-    const bodyHeight = document.heightOfString(body, {
-        width: document.page.width - 92,
-        lineGap: 2.2,
-    });
     document
         .fillColor(colors.text)
         .font("Helvetica")
-        .fontSize(9.2)
-        .text(body, 46, bodyY, {
+        .fontSize(9.2);
+    const bodyHeight = Math.min(
+        document.heightOfString(body, {
             width: document.page.width - 92,
             lineGap: 2.2,
-            align: "justify",
-        });
+        }),
+        maxBodyHeight,
+    );
+    document.text(body, 46, bodyY, {
+        width: document.page.width - 92,
+        height: maxBodyHeight,
+        lineGap: 2.2,
+        align: "justify",
+        ellipsis: true,
+    });
     return bodyY + bodyHeight;
 }
 
@@ -300,10 +316,16 @@ function drawAttentionPanel(
     positionY: number,
 ): number {
     const panelWidth = document.page.width - 92;
-    const textHeight = document.heightOfString(text, {
-        width: panelWidth - 34,
-        lineGap: 2,
-    });
+    document
+        .font("Helvetica-Bold")
+        .fontSize(10);
+    const textHeight = Math.min(
+        document.heightOfString(text, {
+            width: panelWidth - 34,
+            lineGap: 2,
+        }),
+        attentionTextHeight,
+    );
     const panelHeight = Math.max(54, textHeight + 31);
     document
         .roundedRect(46, positionY, panelWidth, panelHeight, 5)
@@ -321,7 +343,9 @@ function drawAttentionPanel(
         .fontSize(10)
         .text(text, 62, positionY + 27, {
             width: panelWidth - 34,
+            height: attentionTextHeight,
             lineGap: 2,
+            ellipsis: true,
         });
     return positionY + panelHeight;
 }
@@ -430,18 +454,21 @@ function drawManagementActions(
     let rowY = positionY + 24;
 
     actions.forEach((item, index) => {
-        const cardHeight = 57;
+        const cardHeight = 48;
         document
             .roundedRect(46, rowY, document.page.width - 92, cardHeight, 4)
-            .fillAndStroke(index % 2 === 0 ? colors.panel : colors.white, colors.border);
+            .fillAndStroke(
+                index % 2 === 0 ? colors.panel : colors.white,
+                colors.border,
+            );
         document
-            .roundedRect(57, rowY + 10, 86, 17, 3)
+            .roundedRect(57, rowY + 8, 86, 17, 3)
             .fill(ownerColor(item.owner));
         document
             .fillColor(colors.white)
             .font("Helvetica-Bold")
             .fontSize(7)
-            .text(item.owner.toUpperCase(), 62, rowY + 15, {
+            .text(item.owner.toUpperCase(), 62, rowY + 13, {
                 width: 76,
                 align: "center",
             });
@@ -449,19 +476,23 @@ function drawManagementActions(
             .fillColor(colors.text)
             .font("Helvetica-Bold")
             .fontSize(8.7)
-            .text(`${index + 1}. ${item.action}`, 156, rowY + 9, {
+            .text(`${index + 1}. ${item.action}`, 156, rowY + 7, {
                 width: 381,
+                height: 18,
                 lineGap: 1,
+                ellipsis: true,
             });
         document
             .fillColor(colors.muted)
             .font("Helvetica")
             .fontSize(7.6)
-            .text(`Basis: ${item.rationale}`, 57, rowY + 34, {
+            .text(`Basis: ${item.rationale}`, 57, rowY + 28, {
                 width: 480,
+                height: 14,
                 lineGap: 1,
+                ellipsis: true,
             });
-        rowY += cardHeight + 7;
+        rowY += cardHeight + 5;
     });
     return rowY;
 }
@@ -478,8 +509,10 @@ function drawConclusion(
         .fontSize(9.2)
         .text(text, 46, positionY + 22, {
             width: document.page.width - 92,
+            height: narrativeHeights.managementConclusion,
             lineGap: 2.2,
             align: "justify",
+            ellipsis: true,
         });
 }
 

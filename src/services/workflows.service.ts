@@ -4,7 +4,10 @@ import type { CreateWorkflowInput } from "../types/workflows.domain";
 import type { WorkflowJob } from "../types/workflows.types";
 import type { EmailService } from "./smtp-email.service";
 import type { ReportService } from "./openai-report.service";
-import { runWorkflow } from "./workflows/workflowRunner.service";
+import {
+    runWorkflow,
+    type WorkflowProgressListener,
+} from "./workflows/workflowRunner.service";
 
 /**
  * Public workflow application service used by the HTTP layer.
@@ -12,8 +15,8 @@ import { runWorkflow } from "./workflows/workflowRunner.service";
 export type WorkflowsService = ReturnType<typeof createWorkflowsService>;
 
 /**
- * Creates jobs, dispatches in-memory workflow execution, and projects public
- * status responses.
+ * Creates jobs, runs in-memory workflow execution, and projects public status
+ * responses.
  */
 export function createWorkflowsService(deps: {
     readonly workflowsRepository: WorkflowsRepository;
@@ -21,7 +24,10 @@ export function createWorkflowsService(deps: {
     readonly emailService: EmailService;
 }) {
     return {
-        async createWorkflow(input: CreateWorkflowInput): Promise<WorkflowJob> {
+        async createWorkflow(
+            input: CreateWorkflowInput,
+            onProgress?: WorkflowProgressListener,
+        ): Promise<WorkflowJob> {
             const id = `wf_${randomUUID()}`;
             const createdAt = new Date().toISOString();
             const job: WorkflowJob = {
@@ -39,14 +45,17 @@ export function createWorkflowsService(deps: {
                 completedAt: null,
             };
 
-            await deps.workflowsRepository.create(job);
-            queueMicrotask(() => {
-                void runWorkflow(deps, id, {
+            const created = await deps.workflowsRepository.create(job);
+            onProgress?.(created);
+            return runWorkflow(
+                deps,
+                id,
+                {
                     senderPassword: input.input.senderPassword,
                     files: input.files,
-                });
-            });
-            return job;
+                },
+                onProgress,
+            );
         },
 
         async getWorkflow(id: string): Promise<WorkflowJob> {
