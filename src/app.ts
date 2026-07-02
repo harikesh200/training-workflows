@@ -2,11 +2,9 @@ import express from "express";
 import helmet from "helmet";
 import cors, { type CorsOptions } from "cors";
 import rateLimit from "express-rate-limit";
-import { pinoHttp } from "pino-http";
 import { config } from "./config/env";
 import { errorHandler } from "./http/error-handler";
-import { requestId } from "./http/request-id";
-import { logger } from "./logger";
+import { requestLogger } from "./http/request-logger";
 import { makeWorkflowsRouter } from "./routes/workflows.routes";
 import type { WorkflowsService } from "./services/workflows.service";
 
@@ -52,48 +50,7 @@ export function buildApp(deps: AppDependencies): express.Express {
     app.use(express.json({ limit: "100kb" }));
     app.use(express.urlencoded({ extended: false, limit: "100kb" }));
     app.use(rateLimit({ windowMs: 60_000, limit: 100 }));
-    app.use(requestId);
-    app.use(
-        pinoHttp({
-            logger,
-            redact: [
-                "req.headers.authorization",
-                "req.headers.cookie",
-                "req.body.senderPassword",
-            ],
-            customLogLevel(req, res, err) {
-                if (err || res.statusCode >= 500) {
-                    return "error";
-                }
-                if (res.statusCode >= 400) {
-                    return "warn";
-                }
-
-                const path = req.url?.split("?", 1)[0];
-                const isRoutineRequest =
-                    path === "/health" ||
-                    path === "/ready" ||
-                    (req.method === "GET" &&
-                        /^\/v1\/workflows\/[^/]+$/.test(path ?? ""));
-
-                return isRoutineRequest ? "silent" : "info";
-            },
-            wrapSerializers: false,
-            serializers: {
-                req(req) {
-                    return {
-                        method: req.method,
-                        url: req.url,
-                    };
-                },
-                res(res) {
-                    return {
-                        statusCode: res.statusCode,
-                    };
-                },
-            },
-        }),
-    );
+    app.use(requestLogger);
 
     app.get("/health", (_req, res) => {
         res.json({ data: { status: "ok" } });
